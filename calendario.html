@@ -1,0 +1,759 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Calendario Organizador</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+            -webkit-font-smoothing: antialiased;
+            -moz-osx-osx-font-smoothing: grayscale;
+        }
+        /* Estilos base para el modo claro */
+        body {
+            background-color: #f3f4f6;
+            color: #1f2937;
+        }
+        .main-card {
+            background-color: #ffffff;
+        }
+        .day-cell {
+            background-color: #ffffff;
+        }
+        
+        /* ESTILO RELIEVE: Sombra sutil para el texto */
+        .shadow-text-main {
+            text-shadow: 1px 1px 0 #cccccc, -1px -1px 0 #cccccc, 1px -1px 0 #cccccc, -1px 1px 0 #cccccc; 
+        }
+
+        /* Estilos específicos del modo oscuro */
+        body.dark-mode {
+            background-color: #111827;
+            color: #f9fafb;
+        }
+        .dark-mode .main-card {
+            background-color: #1f2937;
+            box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.5), 0 4px 6px -2px rgba(0, 0, 0, 0.1);
+        }
+        .dark-mode .day-cell {
+            background-color: #374151;
+            color: #f9fafb;
+        }
+        .dark-mode .day-cell.clickable-day:hover:not(.is-highlighted) {
+             box-shadow: 0 4px 12px rgba(255, 255, 255, 0.1);
+        }
+        .dark-mode .day-cell.is-highlighted:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(255, 255, 255, 0.2); 
+        }
+        .dark-mode .text-gray-500 {
+            color: #9ca3af;
+        }
+        .dark-mode .text-gray-300 {
+            color: #6b7280;
+        }
+        .dark-mode .modal > div {
+            background-color: #1f2937;
+        }
+        .dark-mode #event-input {
+            background-color: #374151;
+            border-color: #4b5563;
+            color: #f9fafb;
+        }
+        .dark-mode #events-list div {
+            background-color: #374151;
+        }
+        
+        /* ESTILO RELIEVE MODO OSCURO: Sombra clara para el texto oscuro */
+        .dark-mode .shadow-text-main {
+            text-shadow: 1px 1px 0 #4b5563, -1px -1px 0 #4b5563, 1px -1px 0 #4b5563, -1px 1px 0 #4b5563;
+        }
+
+
+        /* --- Highlight Classes (Semáforo) --- */
+        .highlight-red { background-color: #fee2e2; } /* Menos de 2 días */
+        .highlight-yellow { background-color: #fef9c3; } /* 3 a 6 días */
+        .highlight-green { background-color: #d1fae5; } /* Más de 6 días */
+        
+        /* Asegura que el color de texto del día sea visible en los resaltados */
+        .highlight-red .day-number-span:not(.bg-blue-600),
+        .highlight-yellow .day-number-span:not(.bg-blue-600),
+        .highlight-green .day-number-span:not(.bg-blue-600) {
+            color: #1f2937; /* Color oscuro para el texto en fondos claros */
+        }
+        .dark-mode .highlight-red,
+        .dark-mode .highlight-yellow,
+        .dark-mode .highlight-green {
+            /* Usamos colores oscuros del semáforo para el modo oscuro, pero manteniendo la intensidad */
+            background-color: #451a1a; /* Rojo oscuro */
+        }
+        .dark-mode .highlight-yellow {
+             background-color: #453c1a; /* Amarillo oscuro */
+        }
+        .dark-mode .highlight-green {
+             background-color: #1a451a; /* Verde oscuro */
+        }
+        .dark-mode .highlight-red .day-number-span:not(.bg-blue-600),
+        .dark-mode .highlight-yellow .day-number-span:not(.bg-blue-600),
+        .dark-mode .highlight-green .day-number-span:not(.bg-blue-600) {
+            color: #f3f4f6; /* Color claro para el texto en fondos oscuros */
+        }
+
+
+        .calendar-grid {
+            display: grid;
+            grid-template-columns: repeat(7, 1fr);
+            gap: 4px;
+        }
+        .day-cell {
+            transition: all 0.2s ease-in-out;
+            position: relative;
+            aspect-ratio: 1/1;
+        }
+        .day-cell.clickable-day:hover:not(.is-highlighted) {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+        }
+        .day-cell.is-highlighted:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2); 
+        }
+        .event-dot {
+            position: absolute;
+            bottom: 8px;
+            left: 50%;
+            transform: translateX(-50%);
+            width: 6px;
+            height: 6px;
+            border-radius: 50%;
+        }
+        .modal {
+            transition: opacity 0.3s ease, transform 0.3s ease;
+        }
+        .modal.hidden {
+            opacity: 0;
+            transform: scale(0.95);
+            pointer-events: none;
+        }
+        
+        /* Artefacto de ocultación para el iframe */
+        .modal > div :where(iframe, [role="group"], [aria-hidden="true"]) {
+            display: none !important;
+        }
+
+        #event-modal [class*="number"] {
+            display: none !important;
+        }
+
+    </style>
+</head>
+<body class="bg-gray-100 text-gray-800 flex items-center justify-center min-h-screen p-4 transition-colors duration-500">
+
+    <!-- Contenedor Principal del Calendario -->
+    <div id="main-calendar-container" class="main-card w-full max-w-4xl bg-white rounded-2xl shadow-lg p-6 transition-colors duration-500">
+        
+        <!-- Botón Modo Oscuro/Claro (Superior Derecha) -->
+        <button id="theme-toggle-btn" class="absolute top-4 right-4 p-2 rounded-full text-gray-600 dark-mode:text-gray-300 hover:bg-gray-100 dark-mode:hover:bg-gray-700 transition-colors duration-500 z-20">
+            <!-- Icono Sol (Default/Claro) -->
+            <svg id="sun-icon" class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 3v1m0 16v1m9-9h-1M4 12H3m15.364 6.364l-.707-.707M6.343 6.343l-.707-.707m12.728 0l-.707.707M6.343 17.657l-.707.707M16 12a4 4 0 11-8 0 4 4 0 018 0z"></path></svg>
+            <!-- Icono Luna (Oscuro) -->
+            <svg id="moon-icon" class="w-6 h-6 hidden" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20.354 15.354A9 9 0 018.646 3.646 9.003 9.003 0 0012 21a9.003 9.003 0 008.354-5.646z"></path></svg>
+        </button>
+
+        <!-- Calendar Header -->
+        <div class="flex items-center justify-between mb-6">
+            <button id="prev-month-btn" class="p-2 rounded-full hover:bg-gray-100 dark-mode:hover:bg-gray-700 transition-colors">
+                <svg class="w-6 h-6 text-gray-600 dark-mode:text-gray-300" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"></path></svg>
+            </button>
+            <h2 id="current-month-year" class="text-2xl font-bold text-gray-800 dark-mode:text-gray-50 text-center shadow-text-main"></h2>
+            <button id="next-month-btn" class="p-2 rounded-full hover:bg-gray-100 dark-mode:hover:bg-gray-700 transition-colors">
+                <svg class="w-6 h-6 text-gray-600 dark-mode:text-gray-300" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"></path></svg>
+            </button>
+        </div>
+
+        <!-- Days of the week -->
+        <div class="calendar-grid mb-2 text-center font-semibold text-gray-500 text-sm">
+            <div>Dom</div>
+            <div>Lun</div>
+            <div>Mar</div>
+            <div>Mié</div>
+            <div>Jue</div>
+            <div>Vie</div>
+            <div>Sáb</div>
+        </div>
+
+        <!-- Calendar Days -->
+        <div id="calendar-days" class="calendar-grid">
+            <!-- Day cells will be generated by JavaScript -->
+        </div>
+    </div>
+
+    <!-- Event Modal -->
+    <div id="event-modal" class="modal fixed inset-0 bg-gray-900 bg-opacity-90 z-50 flex items-center justify-center p-4 hidden">
+        <div class="bg-white dark-mode:bg-gray-800 rounded-xl shadow-2xl w-full max-w-md p-6 relative transform transition-colors duration-500">
+            <button id="close-modal-btn" class="absolute top-4 right-4 text-gray-400 hover:text-gray-700 dark-mode:text-gray-300 dark-mode:hover:text-white">
+                <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>
+            </button>
+            <h3 id="modal-date" class="text-xl font-bold mb-4 dark-mode:text-white"></h3>
+            
+            <!-- Events List -->
+            <div id="events-list" class="space-y-2 mb-4 max-h-40 overflow-y-auto pr-2">
+                <!-- Events will be generated by JavaScript -->
+            </div>
+
+            <!-- Add Event Form -->
+            <div class="space-y-3">
+                 <p id="no-events-message" class="text-gray-500 text-center hidden">No hay eventos para este día.</p>
+                <input type="text" id="event-input" placeholder="Añadir un nuevo evento..." class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition dark-mode:bg-gray-700 dark-mode:border-gray-600 dark-mode:text-white">
+                
+                <!-- Importante Checkbox -->
+                <div class="flex items-center space-x-2">
+                    <input type="checkbox" id="important-checkbox" class="h-4 w-4 text-red-600 border-gray-300 rounded focus:ring-red-500">
+                    <label for="important-checkbox" class="text-sm font-medium text-gray-700 dark-mode:text-gray-300">Marcar como Importante</label>
+                </div>
+                
+                <button id="add-event-btn" class="w-full bg-blue-600 text-white font-semibold py-2 px-4 rounded-lg hover:bg-blue-700 transition-colors focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500">
+                    Guardar Evento
+                </button>
+            </div>
+             <p id="user-id-display" class="text-xs text-gray-400 mt-4 text-center truncate"></p>
+        </div>
+    </div>
+
+    <script type="module">
+        // Importaciones de Firebase desde CDN
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
+        import { getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+        import { getFirestore, collection, addDoc, query, where, onSnapshot, doc, deleteDoc, setLogLevel } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+        
+        // --- Firebase Configuration (Variables Globales Obligatorias) ---
+        // Estas variables son provistas por el entorno, pero se incluyen fallbacks para desarrollo local.
+        const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
+        const firebaseConfig = typeof __firebase_config !== 'undefined' ? JSON.parse(__firebase_config) : { apiKey: "DEMO", authDomain: "DEMO", projectId: "DEMO" };
+        const initialAuthToken = typeof __initial_auth_token !== 'undefined' ? __initial_auth_token : null;
+
+        let db, auth;
+        let userId = null;
+        let eventsUnsubscribe = null;
+        let notificationPermissionGranted = false;
+
+        // Inicializar Firebase
+        try {
+            const app = initializeApp(firebaseConfig);
+            db = getFirestore(app);
+            auth = getAuth(app);
+            // setLogLevel('debug'); // Descomentar para depuración
+        } catch (e) {
+            console.error("Error initializing Firebase:", e);
+        }
+
+        // --- Elementos DOM ---
+        const calendarDays = document.getElementById('calendar-days');
+        const currentMonthYear = document.getElementById('current-month-year');
+        const prevMonthBtn = document.getElementById('prev-month-btn');
+        const nextMonthBtn = document.getElementById('next-month-btn');
+        const modal = document.getElementById('event-modal');
+        const modalDate = document.getElementById('modal-date');
+        const closeModalBtn = document.getElementById('close-modal-btn');
+        const addEventBtn = document.getElementById('add-event-btn');
+        const eventInput = document.getElementById('event-input');
+        const eventsList = document.getElementById('events-list');
+        const noEventsMessage = document.getElementById('no-events-message');
+        const userIdDisplay = document.getElementById('user-id-display');
+        const importantCheckbox = document.getElementById('important-checkbox'); 
+        const themeToggleBtn = document.getElementById('theme-toggle-btn');
+        const sunIcon = document.getElementById('sun-icon');
+        const moonIcon = document.getElementById('moon-icon');
+
+        // --- Lógica de Fecha ---
+        const TODAY = new Date(); 
+        const ONE_DAY_MS = 1000 * 60 * 60 * 24;
+        let currentDate = new Date(TODAY); // Inicializar con la fecha actual del sistema
+        
+        let selectedDate = null;
+        let eventsCache = new Map();
+        
+        // --- Dark Mode Logic ---
+        function applyTheme(isDarkMode) {
+            if (isDarkMode) {
+                document.body.classList.add('dark-mode');
+                sunIcon.classList.add('hidden');
+                moonIcon.classList.remove('hidden');
+            } else {
+                document.body.classList.remove('dark-mode');
+                sunIcon.classList.remove('hidden');
+                moonIcon.classList.add('hidden');
+            }
+            localStorage.setItem('darkMode', isDarkMode ? 'true' : 'false');
+            updateEventIndicators(); // Actualizar colores del semáforo si es necesario
+        }
+
+        function toggleTheme() {
+            const isDarkMode = document.body.classList.contains('dark-mode');
+            applyTheme(!isDarkMode);
+        }
+
+        // Aplicar tema guardado o preferencia del sistema
+        const savedTheme = localStorage.getItem('darkMode');
+        if (savedTheme === 'true') {
+            applyTheme(true);
+        } else if (savedTheme === 'false') {
+             applyTheme(false);
+        } else if (savedTheme === null && window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches) {
+            applyTheme(true);
+        } else {
+             applyTheme(false);
+        }
+
+        // --- Notification Logic ---
+        function requestNotificationPermission() {
+            if (!("Notification" in window)) {
+                console.log("Este navegador no soporta notificaciones de escritorio.");
+                return;
+            }
+
+            if (Notification.permission === "granted") {
+                notificationPermissionGranted = true;
+                return;
+            }
+
+            if (Notification.permission !== "denied") {
+                Notification.requestPermission().then(permission => {
+                    if (permission === "granted") {
+                        notificationPermissionGranted = true;
+                        new Notification("¡Permiso de Notificación Concedido!", {
+                            body: "Recibirás alertas de tus eventos importantes a tiempo.",
+                            icon: "https://placehold.co/64x64/3b82f6/ffffff?text=C"
+                        });
+                    } else {
+                        notificationPermissionGranted = false;
+                        console.log("Permiso de notificación denegado.");
+                    }
+                });
+            }
+        }
+
+        function checkAndShowNotifications() {
+            if (!notificationPermissionGranted) return;
+            
+            const upcomingEvents = [];
+            const upcomingEventDates = new Set();
+
+            eventsCache.forEach((events, dateStr) => {
+                const hasImportant = events.some(e => e.isImportant);
+                
+                if (hasImportant) {
+                    const eventDate = new Date(dateStr + 'T00:00:00');
+                    const todayStart = new Date(TODAY.getFullYear(), TODAY.getMonth(), TODAY.getDate());
+                    
+                    const diffTime = eventDate.getTime() - todayStart.getTime();
+                    const diffDays = Math.ceil(diffTime / ONE_DAY_MS);
+                    
+                    // Notificar si el evento importante es HOY (0) o hasta 3 días en el futuro.
+                    if (diffDays >= 0 && diffDays <= 3) {
+                        if (!upcomingEventDates.has(dateStr)) {
+                            upcomingEventDates.add(dateStr);
+                            
+                            const eventTexts = events
+                                .filter(e => e.isImportant)
+                                .map(e => e.text);
+
+                            upcomingEvents.push({
+                                dateStr: dateStr,
+                                diffDays: diffDays,
+                                texts: eventTexts
+                            });
+                        }
+                    }
+                }
+            });
+
+            if (upcomingEvents.length > 0) {
+                const count = upcomingEvents.length;
+                let title;
+                
+                if (count === 1) {
+                    const event = upcomingEvents[0];
+                    title = `⚠️ ¡Alerta! Evento Importante ${event.diffDays === 0 ? 'HOY' : `en ${event.diffDays} día(s)`}`;
+                    new Notification(title, {
+                        body: upcomingEvents[0].texts.join(', '),
+                        icon: "https://placehold.co/64x64/ef4444/ffffff?text=!"
+                    });
+                } else {
+                    title = `📅 Tienes ${count} fechas importantes en los próximos 3 días.`;
+                    
+                    const bodyLines = upcomingEvents.map(event => {
+                        const date = new Date(event.dateStr + 'T00:00:00');
+                        const formattedDate = date.toLocaleDateString('es-ES', { day: 'numeric', month: 'short' });
+                        return `- ${formattedDate}: ${event.texts.join('; ')}`;
+                    });
+
+                    new Notification(title, {
+                        body: bodyLines.join('\n'),
+                        icon: "https://placehold.co/64x64/ef4444/ffffff?text=!"
+                    });
+                }
+            }
+        }
+        
+        // --- Authentication ---
+        onAuthStateChanged(auth, async (user) => {
+            if (user) {
+                console.log("User is signed in with UID:", user.uid);
+                userId = user.uid;
+                userIdDisplay.textContent = `ID de Sesión: ${userId}`;
+                requestNotificationPermission();
+                renderCalendar();
+            } else {
+                console.log("No user signed in, attempting sign in...");
+                try {
+                    if (initialAuthToken) {
+                        await signInWithCustomToken(auth, initialAuthToken);
+                    } else {
+                        await signInAnonymously(auth);
+                    }
+                } catch (error) {
+                    console.error("Error signing in:", error);
+                }
+            }
+        });
+
+        // --- Main Calendar Logic ---
+        function renderCalendar() {
+            if (!userId) {
+                return;
+            }
+            
+            calendarDays.innerHTML = '';
+            eventsCache.clear();
+
+            const month = currentDate.getMonth();
+            const year = currentDate.getUTCFullYear();
+            currentDate.setDate(1); // Importante: resetear al día 1 antes de calcular el primer día de la semana
+
+            const monthNames = ["Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio", "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre"];
+            currentMonthYear.textContent = `${monthNames[month]} ${year}`;
+
+            const firstDayIndex = currentDate.getDay(); // 0 (Dom) - 6 (Sáb)
+            const lastDay = new Date(year, month + 1, 0).getDate();
+            const prevLastDay = new Date(year, month, 0).getDate();
+
+            // 1. Días de relleno del mes anterior
+            for (let i = firstDayIndex; i > 0; i--) {
+                const dayCell = createDayCell(prevLastDay - i + 1, true);
+                calendarDays.appendChild(dayCell);
+            }
+
+            // 2. Días del mes actual
+            for (let i = 1; i <= lastDay; i++) {
+                const dateStr = `${year}-${String(month + 1).padStart(2, '0')}-${String(i).padStart(2, '0')}`;
+                const dayCell = createDayCell(i, false, dateStr);
+                
+                // Resaltar la fecha de HOY
+                const today = TODAY; 
+                if (i === today.getDate() && month === today.getMonth() && year === today.getFullYear()) {
+                    const dayNumberSpan = dayCell.querySelector('.day-number-span');
+                    if (dayNumberSpan) {
+                         // El día de hoy tiene un estilo especial, sin importar el modo.
+                         dayNumberSpan.classList.add('bg-blue-600', 'text-white', 'shadow-md');
+                    }
+                    dayCell.classList.add('font-bold', 'is-highlighted'); // Añadir is-highlighted para mantener estilos de hover
+                }
+                
+                calendarDays.appendChild(dayCell);
+            }
+
+            // 3. Días de relleno del mes siguiente (para asegurar una cuadrícula completa de 6 filas, 42 celdas)
+            const totalCells = firstDayIndex + lastDay;
+            const remainingCells = 42 - totalCells; 
+            
+            if (remainingCells > 0) {
+                 for (let i = 1; i <= remainingCells; i++) {
+                     const dayCell = createDayCell(i, true);
+                     calendarDays.appendChild(dayCell);
+                 }
+            }
+
+            // Cargar eventos del mes
+            listenForMonthEvents(year, month);
+        }
+
+        function createDayCell(day, isPadding = false, dateStr = null) {
+            const dayCell = document.createElement('div');
+            // Nota: Se elimina bg-white/dark-mode:bg-gray-700 para que el semáforo tenga control total
+            dayCell.classList.add('day-cell', 'flex', 'items-center', 'justify-center', 'rounded-lg', 'transition-colors', 'duration-500');
+
+            if (isPadding) {
+                dayCell.textContent = day;
+                dayCell.classList.add('text-gray-300', 'cursor-not-allowed', 'bg-gray-50', 'dark-mode:bg-gray-700'); 
+            } else {
+                dayCell.classList.add('clickable-day', 'bg-white', 'dark-mode:bg-gray-700'); // Fondo por defecto para días activos
+                const dayNumber = document.createElement('span');
+                dayNumber.textContent = day;
+                dayNumber.classList.add('day-number-span', 'w-8', 'h-8', 'flex', 'items-center', 'justify-center', 'rounded-full', 'transition-colors', 'z-10', 'relative'); 
+                dayCell.appendChild(dayNumber);
+
+                dayCell.classList.add('cursor-pointer');
+                dayCell.dataset.date = dateStr;
+                dayCell.addEventListener('click', () => openModal(dateStr));
+            }
+
+            return dayCell;
+        }
+        
+        function resetCellClasses(cell) {
+             cell.classList.remove('highlight-red', 'highlight-yellow', 'highlight-green', 'is-highlighted');
+             cell.querySelector('.day-number-span')?.classList.remove('text-indigo-600', 'bg-blue-600', 'text-white', 'shadow-md'); 
+
+             if (!cell.classList.contains('text-gray-300')) {
+                 // Restaurar el color de fondo por defecto del modo (blanco o gris oscuro)
+                 cell.classList.remove('bg-gray-50', 'dark-mode:bg-gray-700', 'bg-white');
+                 if (document.body.classList.contains('dark-mode')) {
+                     cell.classList.add('dark-mode:bg-gray-700');
+                 } else {
+                     cell.classList.add('bg-white');
+                 }
+                 cell.style.color = '';
+             }
+             // Asegurarse de que el día actual mantenga su estilo
+             const today = TODAY; 
+             const day = cell.querySelector('.day-number-span')?.textContent;
+             const cellDate = cell.dataset.date ? new Date(cell.dataset.date + 'T00:00:00') : null;
+             
+             if (cellDate && cellDate.getDate() === today.getDate() && cellDate.getMonth() === today.getMonth() && cellDate.getFullYear() === today.getFullYear()) {
+                 cell.querySelector('.day-number-span')?.classList.add('bg-blue-600', 'text-white', 'shadow-md');
+                 cell.classList.add('font-bold', 'is-highlighted');
+             }
+
+        }
+
+        function updateEventIndicators() {
+            // 1. Limpiar indicadores y clases de semáforo
+            document.querySelectorAll('.event-dot').forEach(dot => dot.remove());
+            document.querySelectorAll('.day-cell[data-date]').forEach(cell => {
+                resetCellClasses(cell);
+            });
+
+            // 2. Aplicar Semáforo y Puntos
+            eventsCache.forEach((events, dateStr) => {
+                if(events.length > 0) {
+                    const cell = document.querySelector(`[data-date='${dateStr}']`);
+                    if (cell) {
+                        const hasImportant = events.some(e => e.isImportant);
+                        
+                        if (hasImportant) {
+                            // Lógica del Semáforo
+                            const eventDate = new Date(dateStr + 'T00:00:00');
+                            const todayStart = new Date(TODAY.getFullYear(), TODAY.getMonth(), TODAY.getDate());
+                            
+                            const diffTime = eventDate.getTime() - todayStart.getTime();
+                            const diffDays = Math.ceil(diffTime / ONE_DAY_MS);
+
+                            let colorClass = '';
+                            if (diffDays <= 2) { // 2 días o menos -> ROJO
+                                colorClass = 'highlight-red';
+                            } else if (diffDays >= 3 && diffDays <= 6) { // 3 a 6 días -> AMARILLO
+                                colorClass = 'highlight-yellow';
+                            } else if (diffDays > 6) { // Más de 6 días -> VERDE
+                                colorClass = 'highlight-green';
+                            }
+
+                            // Aplicar resaltado (solo si es hoy o en el futuro)
+                            if (diffDays >= 0) {
+                                cell.classList.remove('bg-white', 'dark-mode:bg-gray-700'); 
+                                cell.classList.add(colorClass, 'is-highlighted');
+                            }
+                        }
+
+                        // Colocar el punto del evento
+                        const dot = document.createElement('div');
+                        dot.className = 'event-dot';
+                        
+                        if (hasImportant) {
+                            dot.style.backgroundColor = '#b91c1c'; // Rojo para importante
+                        } else {
+                            dot.style.backgroundColor = '#3b82f6'; // Azul para normal
+                        }
+                        cell.appendChild(dot);
+                    }
+                }
+            });
+            
+            // 3. Disparar Notificaciones
+            checkAndShowNotifications();
+        }
+
+
+        // --- Firestore Logic ---
+        function listenForMonthEvents(year, month) {
+            if (eventsUnsubscribe) {
+                eventsUnsubscribe(); // Detener la escucha anterior
+            }
+             if (!userId) return;
+
+            const startDate = `${year}-${String(month + 1).padStart(2, '0')}-01`;
+            const lastDayOfMonth = new Date(year, month + 1, 0).getDate();
+            const endDate = `${year}-${String(month + 1).padStart(2, '0')}-${String(lastDayOfMonth).padStart(2, '0')}`;
+            
+            // Colección privada del usuario: /artifacts/{appId}/users/{userId}/events
+            const eventsRef = collection(db, `artifacts/${appId}/users/${userId}/events`);
+            const q = query(eventsRef, where("date", ">=", startDate), where("date", "<=", endDate));
+            
+            eventsUnsubscribe = onSnapshot(q, (snapshot) => {
+                eventsCache.clear();
+                snapshot.forEach(doc => {
+                    const event = { id: doc.id, ...doc.data() };
+                    if (!eventsCache.has(event.date)) {
+                        eventsCache.set(event.date, []);
+                    }
+                    // Manejo seguro de la fecha de creación
+                    event.createdAt = event.createdAt?.toDate ? event.createdAt.toDate() : (event.createdAt instanceof Date ? event.createdAt : new Date()); 
+                    eventsCache.get(event.date).push(event);
+                });
+                updateEventIndicators();
+                if (!modal.classList.contains('hidden')) {
+                    updateModalEvents();
+                }
+            }, (error) => {
+                console.error("Error fetching month events: ", error);
+            });
+        }
+
+
+        async function addEvent() {
+            const eventText = eventInput.value.trim();
+            const isImportant = importantCheckbox.checked;
+
+            if (eventText === '' || !selectedDate || !userId) return;
+
+            try {
+                const eventsRef = collection(db, `artifacts/${appId}/users/${userId}/events`);
+                await addDoc(eventsRef, {
+                    date: selectedDate,
+                    text: eventText,
+                    isImportant: isImportant,
+                    createdAt: new Date()
+                });
+                eventInput.value = '';
+                importantCheckbox.checked = false;
+            } catch (error) {
+                console.error("Error adding event: ", error);
+            }
+        }
+        
+        async function deleteEvent(eventId) {
+            if (!userId || !eventId) return;
+             try {
+                const eventRef = doc(db, `artifacts/${appId}/users/${userId}/events`, eventId);
+                await deleteDoc(eventRef);
+             } catch(error) {
+                console.error("Error deleting event: ", error);
+             }
+        }
+
+
+        // --- Modal Logic ---
+        function openModal(dateStr) {
+            selectedDate = dateStr;
+            const date = new Date(dateStr + 'T00:00:00');
+            const options = { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' };
+            
+            let dateTitle = date.toLocaleDateString('es-ES', options);
+            
+            modalDate.textContent = dateTitle;
+            
+            eventInput.value = '';
+            importantCheckbox.checked = false; 
+
+            updateModalEvents();
+
+            modal.classList.remove('hidden');
+        }
+
+        function closeModal() {
+            modal.classList.add('hidden');
+            selectedDate = null;
+        }
+        
+        function updateModalEvents() {
+            eventsList.innerHTML = '';
+            const dayEvents = eventsCache.get(selectedDate) || [];
+            
+            if (dayEvents.length === 0) {
+                noEventsMessage.classList.remove('hidden');
+            } else {
+                noEventsMessage.classList.add('hidden');
+
+                // Ordenar: Importantes primero, luego por fecha de creación
+                dayEvents.sort((a, b) => {
+                    if (a.isImportant !== b.isImportant) {
+                        return b.isImportant - a.isImportant;
+                    }
+                    const timeA = a.createdAt.getTime ? a.createdAt.getTime() : new Date(a.createdAt).getTime();
+                    const timeB = b.createdAt.getTime ? b.createdAt.getTime() : new Date(b.createdAt).getTime();
+                    return timeA - timeB;
+                }).forEach(event => {
+                    const eventEl = document.createElement('div');
+                    eventEl.className = 'flex items-center justify-between bg-gray-50 dark-mode:bg-gray-700 p-2 rounded-md transition-shadow duration-200';
+                    
+                    if (event.isImportant) {
+                         eventEl.classList.add('bg-red-50', 'border-l-4', 'border-red-500', 'shadow-md');
+                    }
+                    
+                    const textSpan = document.createElement('span');
+                    textSpan.textContent = event.text;
+                    textSpan.className = "flex-grow mr-2 text-gray-800 dark-mode:text-gray-200 " + (event.isImportant ? 'font-semibold text-red-700 dark-mode:text-red-400' : '');
+                    eventEl.appendChild(textSpan);
+                    
+                    if (event.isImportant) {
+                        const starIcon = document.createElement('span');
+                        starIcon.innerHTML = '⭐';
+                        starIcon.className = "mr-2 text-lg flex-shrink-0";
+                        eventEl.prepend(starIcon);
+                    }
+                    
+                    const deleteBtn = document.createElement('button');
+                    deleteBtn.innerHTML = `<svg class="w-4 h-4 text-red-400 hover:text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path></svg>`;
+                    deleteBtn.className = "flex-shrink-0";
+                    deleteBtn.onclick = () => deleteEvent(event.id);
+                    eventEl.appendChild(deleteBtn);
+                    
+                    eventsList.appendChild(eventEl);
+                });
+            }
+        }
+
+
+        // --- Event Listeners ---
+        prevMonthBtn.addEventListener('click', () => {
+            currentDate.setMonth(currentDate.getMonth() - 1);
+            renderCalendar();
+        });
+
+        nextMonthBtn.addEventListener('click', () => {
+            currentDate.setMonth(currentDate.getMonth() + 1);
+            renderCalendar();
+        });
+
+        closeModalBtn.addEventListener('click', closeModal);
+        addEventBtn.addEventListener('click', addEvent);
+        eventInput.addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') {
+                addEvent();
+            }
+        });
+        
+        themeToggleBtn.addEventListener('click', toggleTheme);
+
+        modal.addEventListener('click', (e) => {
+            if (e.target === modal) {
+                closeModal();
+            }
+        });
+
+    </script>
+</body>
+</html>
